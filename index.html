@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>五子棋遊戲 (AI對戰)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f0f2f5;
+            transition: background-color 0.3s;
+        }
+        .board-bg {
+            background-color: #d1b585;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1), 0 6px 6px rgba(0,0,0,0.1);
+        }
+        canvas {
+            cursor: pointer;
+        }
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .hidden {
+            display: none;
+        }
+        /* 響應式設計 */
+        @media (max-width: 640px) {
+            .game-container, .start-screen, .records-container {
+                padding: 1rem;
+            }
+             h1 {
+                font-size: 1.8rem;
+             }
+        }
+        /* Modal 動畫 */
+        .modal {
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans">
+    <div class="space-y-6 w-full max-w-lg md:max-w-xl lg:max-w-2xl">
+        <!-- 開始畫面：選擇棋子與時間 -->
+        <div id="start-screen" class="p-4 md:p-8 bg-white rounded-2xl shadow-xl text-center">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-6">選擇你的棋子</h1>
+            <div class="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                <button id="select-black" class="w-full sm:w-auto px-8 py-4 bg-gray-800 text-white font-bold rounded-lg text-lg shadow-md hover:bg-gray-900 btn">執黑子 (先手)</button>
+                <button id="select-white" class="w-full sm:w-auto px-8 py-4 bg-gray-200 text-black font-bold rounded-lg text-lg shadow-md hover:bg-gray-300 btn">執白子 (後手)</button>
+            </div>
+            <div class="mt-8">
+                <h2 class="text-xl font-bold text-gray-700 mb-3">選擇落子時限</h2>
+                <div id="time-limit-options" class="flex justify-center space-x-2">
+                    <button data-time="10" class="time-btn w-24 px-4 py-2 bg-gray-200 text-black font-semibold rounded-lg shadow-sm hover:bg-gray-300 btn">10 秒</button>
+                    <button data-time="20" class="time-btn w-24 px-4 py-2 bg-gray-200 text-black font-semibold rounded-lg shadow-sm hover:bg-gray-300 btn">20 秒</button>
+                    <button data-time="30" class="time-btn w-24 px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg shadow-md hover:bg-blue-700 btn">30 秒</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 遊戲主畫面 -->
+        <div id="game-container" class="game-container p-4 md:p-8 bg-white rounded-2xl shadow-xl text-center hidden">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">五子棋 (Gomoku)</h1>
+            
+            <div class="flex justify-between items-center mb-4 px-2">
+                <div id="status" class="text-lg md:text-xl font-semibold text-gray-700 h-8"></div>
+                <div class="flex items-center space-x-2">
+                    <span class="font-semibold">倒數:</span>
+                    <div id="timer" class="text-xl md:text-2xl font-bold text-red-600 w-8">30</div>
+                </div>
+            </div>
+
+            <div class="relative w-full aspect-square board-bg rounded-lg p-2 md:p-4">
+                <canvas id="gomoku-board" class="w-full h-full rounded"></canvas>
+            </div>
+            
+            <button id="restart-button" class="mt-6 w-full md:w-auto px-8 py-3 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 btn">
+                開新局
+            </button>
+        </div>
+
+        <!-- 遊戲記錄排行榜 -->
+        <div id="records-container" class="p-4 md:p-8 bg-white rounded-2xl shadow-xl text-center">
+            <h2 class="text-2xl font-bold text-gray-800 mb-4">最速遊戲記錄 (前五名)</h2>
+            <ol id="records-list" class="text-left space-y-2 text-gray-700">
+                <!-- JS動態生成 -->
+            </ol>
+        </div>
+    </div>
+
+    <!-- 勝利簽名 Modal -->
+    <div id="signature-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-white p-6 md:p-8 rounded-lg shadow-xl text-center w-full max-w-sm modal">
+            <h2 class="text-2xl font-bold mb-4">恭喜你獲勝了！</h2>
+            <p id="game-time-info" class="mb-4 text-lg"></p>
+            <input type="text" id="winner-name" placeholder="請在此簽名" class="border p-2 rounded w-full mb-4 focus:ring-2 focus:ring-blue-500 outline-none">
+            <button id="save-score-button" class="w-full px-6 py-2 bg-blue-600 text-white font-bold rounded-lg shadow-md hover:bg-blue-700 btn">儲存紀錄</button>
+        </div>
+    </div>
+
+
+    <script>
+        // DOM 元素
+        const startScreen = document.getElementById('start-screen');
+        const gameContainer = document.getElementById('game-container');
+        const selectBlack = document.getElementById('select-black');
+        const selectWhite = document.getElementById('select-white');
+        const timeLimitOptions = document.getElementById('time-limit-options');
+        const timeButtons = timeLimitOptions.querySelectorAll('.time-btn');
+        const canvas = document.getElementById('gomoku-board');
+        const ctx = canvas.getContext('2d');
+        const statusEl = document.getElementById('status');
+        const timerEl = document.getElementById('timer');
+        const restartButton = document.getElementById('restart-button');
+        const boardContainer = canvas.parentElement;
+        const recordsContainer = document.getElementById('records-container');
+        const recordsList = document.getElementById('records-list');
+        const signatureModal = document.getElementById('signature-modal');
+        const gameTimeInfo = document.getElementById('game-time-info');
+        const winnerNameInput = document.getElementById('winner-name');
+        const saveScoreButton = document.getElementById('save-score-button');
+
+        // 遊戲設定
+        const BOARD_SIZE = 15;
+        let CELL_SIZE;
+
+        // 遊戲狀態
+        let board = [];
+        let currentPlayer = 1; // 1: 黑, 2: 白
+        let playerColor = 1;
+        let aiColor = 2;
+        let gameOver = false;
+        let gameStartTime;
+        let turnTimer;
+        let timeLeft;
+        let turnTimeLimit = 30; // 預設30秒
+
+        // --- 遊戲流程控制 ---
+
+        function setupGame(chosenColor) {
+            playerColor = chosenColor;
+            aiColor = (chosenColor === 1) ? 2 : 1;
+            startScreen.classList.add('hidden');
+            gameContainer.classList.remove('hidden');
+            recordsContainer.classList.add('hidden'); // 開始遊戲時隱藏排行榜
+            initGame();
+        }
+        
+        function initGame() {
+            board = Array(BOARD_SIZE).fill(null).map(() => Array(BOARD_SIZE).fill(0));
+            currentPlayer = 1; // 黑子永遠先手
+            gameOver = false;
+            gameStartTime = new Date();
+            
+            timerEl.textContent = turnTimeLimit; // 初始化計時器顯示
+            drawBoard();
+            updateStatus();
+            startTurn();
+        }
+        
+        function startTurn() {
+            if (gameOver) return;
+            startTurnTimer();
+            if (currentPlayer === aiColor) {
+                // 電腦回合，延遲一下模擬思考
+                statusEl.textContent = "電腦思考中...";
+                setTimeout(aiMove, 500);
+            } else {
+                statusEl.textContent = "換你囉！";
+            }
+        }
+
+        function switchTurn() {
+            if (gameOver) return;
+            currentPlayer = (currentPlayer === 1) ? 2 : 1;
+            updateStatus();
+            startTurn();
+        }
+
+        // 繪製棋盤
+        function drawBoard() {
+            // 防止在遊戲未開始或棋盤未初始化時繪製導致錯誤
+            if (gameContainer.classList.contains('hidden') || !board || board.length !== BOARD_SIZE) return;
+
+            const containerSize = boardContainer.clientWidth - parseInt(getComputedStyle(boardContainer).paddingLeft) * 2;
+            canvas.width = containerSize;
+            canvas.height = containerSize;
+            CELL_SIZE = canvas.width / (BOARD_SIZE + 1);
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.strokeStyle = '#5c4033';
+            ctx.lineWidth = 1;
+
+            for (let i = 0; i < BOARD_SIZE; i++) {
+                ctx.beginPath();
+                ctx.moveTo(CELL_SIZE * (i + 1), CELL_SIZE);
+                ctx.lineTo(CELL_SIZE * (i + 1), canvas.height - CELL_SIZE);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(CELL_SIZE, CELL_SIZE * (i + 1));
+                ctx.lineTo(canvas.width - CELL_SIZE, CELL_SIZE * (i + 1));
+                ctx.stroke();
+            }
+
+            const starPoints = [{x: 3, y: 3}, {x: 11, y: 3}, {x: 3, y: 11}, {x: 11, y: 11}, {x: 7, y: 7}];
+            ctx.fillStyle = '#5c4033';
+            starPoints.forEach(p => {
+                ctx.beginPath();
+                ctx.arc(CELL_SIZE * (p.x + 1), CELL_SIZE * (p.y + 1), CELL_SIZE * 0.15, 0, 2 * Math.PI);
+                ctx.fill();
+            });
+
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    if (board[y][x] !== 0) drawPiece(x, y, board[y][x]);
+                }
+            }
+        }
+
+        function drawPiece(x, y, player) {
+            const pieceRadius = CELL_SIZE * 0.45;
+            const canvasX = CELL_SIZE * (x + 1);
+            const canvasY = CELL_SIZE * (y + 1);
+            
+            ctx.beginPath();
+            ctx.arc(canvasX, canvasY, pieceRadius, 0, 2 * Math.PI);
+            
+            const gradient = ctx.createRadialGradient(canvasX - pieceRadius*0.3, canvasY - pieceRadius*0.3, pieceRadius*0.1, canvasX, canvasY, pieceRadius);
+            if (player === 1) {
+                gradient.addColorStop(0, '#666');
+                gradient.addColorStop(1, '#111');
+            } else {
+                gradient.addColorStop(0, '#fff');
+                gradient.addColorStop(1, '#ccc');
+            }
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+        
+        function updateStatus() {
+            if (gameOver) return;
+            const playerText = currentPlayer === 1 ? '黑棋' : '白棋';
+            statusEl.textContent = `輪到 ${playerText}`;
+            statusEl.style.color = currentPlayer === 1 ? '#333' : '#555';
+        }
+
+        // --- 計時器功能 ---
+        
+        function startTurnTimer() {
+            clearInterval(turnTimer);
+            timeLeft = turnTimeLimit;
+            timerEl.textContent = timeLeft;
+            timerEl.style.color = '#dc2626';
+
+            turnTimer = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+                if (timeLeft < 0) {
+                    clearInterval(turnTimer);
+                    statusEl.textContent = "超時！交換回合";
+                    setTimeout(switchTurn, 1000); // 顯示訊息後再交換
+                }
+            }, 1000);
+        }
+
+        // --- 玩家操作 ---
+
+        function handleCanvasClick(event) {
+            if (gameOver || currentPlayer !== playerColor) return;
+
+            const rect = canvas.getBoundingClientRect();
+            const x = event.clientX - rect.left;
+            const y = event.clientY - rect.top;
+            const gridX = Math.round(x / CELL_SIZE) - 1;
+            const gridY = Math.round(y / CELL_SIZE) - 1;
+
+            if (gridX < 0 || gridX >= BOARD_SIZE || gridY < 0 || gridY >= BOARD_SIZE || board[gridY][gridX] !== 0) return;
+
+            placePiece(gridX, gridY);
+        }
+
+        function placePiece(x, y) {
+            board[y][x] = currentPlayer;
+            drawPiece(x, y, currentPlayer);
+            clearInterval(turnTimer); // 成功落子後停止計時
+
+            if (checkWin(x, y)) {
+                endGame(currentPlayer);
+            } else {
+                switchTurn();
+            }
+        }
+
+        // --- 電腦 AI 邏輯 ---
+
+        function aiMove() {
+            if (gameOver) return;
+            const move = findBestMove();
+            placePiece(move.x, move.y);
+        }
+
+        function findBestMove() {
+            let bestScore = -Infinity;
+            let move = {};
+
+            // 遍歷所有空位
+            for (let y = 0; y < BOARD_SIZE; y++) {
+                for (let x = 0; x < BOARD_SIZE; x++) {
+                    if (board[y][x] === 0) {
+                        // 評估在此處下棋的分數
+                        board[y][x] = aiColor;
+                        let aiScore = calculateScore(x, y, aiColor);
+                        board[y][x] = playerColor;
+                        let playerScore = calculateScore(x, y, playerColor);
+                        board[y][x] = 0; // 恢復棋盤
+
+                        // 分數結合AI進攻和玩家防守
+                        const score = aiScore + playerScore;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            move = { x, y };
+                        }
+                    }
+                }
+            }
+            return move;
+        }
+
+        function calculateScore(x, y, player) {
+            let score = 0;
+            const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
+
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                let openEnds = 0;
+
+                // 正向
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + i * dx;
+                    const ny = y + i * dy;
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === player) {
+                        count++;
+                    } else if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === 0) {
+                        openEnds++;
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+
+                // 反向
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - i * dx;
+                    const ny = y - i * dy;
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === player) {
+                        count++;
+                    } else if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === 0) {
+                        openEnds++;
+                        break;
+                    } else {
+                        break;
+                    }
+                }
+
+                // 根據棋型給分
+                if (count >= 5) score += 100000; // 五連
+                else if (count === 4 && openEnds === 2) score += 10000; // 活四
+                else if (count === 4 && openEnds === 1) score += 1000; // 衝四
+                else if (count === 3 && openEnds === 2) score += 1000; // 活三
+                else if (count === 3 && openEnds === 1) score += 100;  // 眠三
+                else if (count === 2 && openEnds === 2) score += 100;  // 活二
+                else if (count === 2 && openEnds === 1) score += 10;   // 眠二
+                else score += count;
+            }
+            return score;
+        }
+
+
+        // --- 遊戲結束與記錄 ---
+
+        function checkWin(x, y) {
+            const player = board[y][x];
+            if (player === 0) return false;
+            const directions = [[1, 0], [0, 1], [1, 1], [1, -1]];
+            for (const [dx, dy] of directions) {
+                let count = 1;
+                for (let i = 1; i < 5; i++) {
+                    const nx = x + i * dx, ny = y + i * dy;
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === player) count++; else break;
+                }
+                for (let i = 1; i < 5; i++) {
+                    const nx = x - i * dx, ny = y - i * dy;
+                    if (nx >= 0 && nx < BOARD_SIZE && ny >= 0 && ny < BOARD_SIZE && board[ny][nx] === player) count++; else break;
+                }
+                if (count >= 5) return true;
+            }
+            return false;
+        }
+
+        function endGame(winner) {
+            gameOver = true;
+            clearInterval(turnTimer);
+            const winnerText = winner === 1 ? '黑棋' : '白棋';
+            statusEl.textContent = `${winnerText} 獲勝！`;
+            statusEl.style.color = '#d33';
+
+            const gameDuration = Math.round((new Date() - gameStartTime) / 1000);
+
+            if (winner === playerColor) {
+                gameTimeInfo.textContent = `遊戲時間：${gameDuration} 秒`;
+                signatureModal.classList.remove('hidden');
+            } else {
+                // 電腦獲勝
+                 setTimeout(() => {
+                    alert(`你輸了！電腦 (${winnerText}) 獲勝。\n遊戲時間：${gameDuration} 秒`);
+                 }, 200);
+            }
+        }
+        
+        function saveScore() {
+            const name = winnerNameInput.value.trim() || "匿名玩家";
+            const duration = Math.round((new Date() - gameStartTime) / 1000);
+            
+            let records = loadRecords();
+            records.push({ name: name, time: duration });
+            records.sort((a, b) => a.time - b.time);
+            records = records.slice(0, 5); // 只保留前五名
+            
+            localStorage.setItem('gomokuRecords', JSON.stringify(records));
+            
+            signatureModal.classList.add('hidden');
+            winnerNameInput.value = '';
+            displayRecords(); // 更新排行榜
+        }
+
+        function loadRecords() {
+            return JSON.parse(localStorage.getItem('gomokuRecords')) || [];
+        }
+
+        function displayRecords() {
+            const records = loadRecords();
+            recordsList.innerHTML = '';
+            if (records.length === 0) {
+                 recordsList.innerHTML = '<li class="text-gray-500">尚無記錄</li>';
+                 return;
+            }
+            records.forEach((record, index) => {
+                const li = document.createElement('li');
+                li.className = "p-2 rounded " + (index % 2 === 0 ? "bg-gray-100" : "");
+                li.innerHTML = `<span class="font-bold w-6 inline-block">${index + 1}.</span> ${record.name} - <span class="text-blue-600 font-semibold">${record.time} 秒</span>`;
+                recordsList.appendChild(li);
+            });
+        }
+        
+        function resetToStartScreen() {
+            gameContainer.classList.add('hidden');
+            recordsContainer.classList.remove('hidden');
+            startScreen.classList.remove('hidden');
+            displayRecords();
+        }
+
+        // 事件監聽
+        selectBlack.addEventListener('click', () => setupGame(1));
+        selectWhite.addEventListener('click', () => setupGame(2));
+        canvas.addEventListener('click', handleCanvasClick);
+        restartButton.addEventListener('click', resetToStartScreen);
+        saveScoreButton.addEventListener('click', saveScore);
+        window.addEventListener('resize', drawBoard);
+        
+        // 初始載入
+        displayRecords();
+
+        timeButtons.forEach(button => {
+            button.addEventListener('click', () => {
+                turnTimeLimit = parseInt(button.dataset.time);
+
+                // 更新按鈕樣式
+                timeButtons.forEach(btn => {
+                    btn.classList.remove('bg-blue-600', 'text-white', 'shadow-md');
+                    btn.classList.add('bg-gray-200', 'text-black', 'shadow-sm');
+                });
+                button.classList.add('bg-blue-600', 'text-white', 'shadow-md');
+                button.classList.remove('bg-gray-200', 'text-black', 'shadow-sm');
+            });
+        });
+    </script>
+</body>
+</html>
